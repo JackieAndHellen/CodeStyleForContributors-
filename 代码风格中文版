@@ -1,0 +1,293 @@
+https://source.android.com/source/code-style.html#javatests-style-rules
+
+1. Java 规则
+------------------------------------------不要 忽略 Exception----------------------------------------------------------
+避免以下例子：
+    ----
+void setServerPort(String value) {
+    try {
+        serverPort = Integer.parseInt(value);
+    } catch (NumberFormatException e) { }
+}
+
+任何时候有人有一个空的catch子句，他们应该有一个令人毛骨悚然的感觉。
+有时候，它实际上是正确的事情，但至少你必须考虑它。 在Java中你不能逃避令人毛骨悚然的感觉。 - 詹姆斯
+
+可选的行为：
+
+*上抛异常：
+
+    void setServerPort(String value) throws NumberFormatException {
+        serverPort = Integer.parseInt(value);
+    }
+*抛出一个适合你的抽象层次的新异常
+void setServerPort(String value) throws ConfigurationException {
+    try {
+        serverPort = Integer.parseInt(value);
+    } catch (NumberFormatException e) {
+        throw new ConfigurationException("Port " + value + " is not valid.");
+    }
+}
+
+*捕获异常并抛出一个新的RuntimeException。 这是危险的，所以只有当你肯定这个错误发生的应该导致崩溃才去这么做。
+/ **设置端口。 如果值不是有效数字，则死亡。 * / JDK1.3版本以下需要忽略RuntimeException
+void setServerPort(String value) {
+    try {
+        serverPort = Integer.parseInt(value);
+    } catch (NumberFormatException e) {
+        throw new RuntimeException("port " + value " is invalid, ", e);
+    }
+}
+*作为最后的手段，如果你有信心忽略异常是适当的，那么你可以忽略它，但你也必须评论为什么有一个很好的理由：
+/** If value is not a valid number, original port number is used. */
+void setServerPort(String value) {
+    try {
+        serverPort = Integer.parseInt(value);
+    } catch (NumberFormatException e) {
+        // Method is documented to just ignore invalid user input.
+        // serverPort will just be unchanged.
+    }
+}
+
+
+------------------------------------------不捕获通用异常----------------------------------------------------------
+try {
+    someComplicatedIOFunction();        // may throw IOException
+    someComplicatedParsingFunction();   // may throw ParsingException
+    someComplicatedSecurityFunction();  // may throw SecurityException
+    // phew, made it all the way
+} catch (Exception e) {                 // I'll just catch all exceptions  not recommond
+    handleError();                      // with one generic handler!
+}
+
+------------------------------------------不使用Finalizers----------------------------------------------------------
+Finalizer是一种在对象被垃圾回收时执行一段代码的方法。 虽然他们可以方便地进行清理（特别是外部资源），但是没有保证什么时候调用终结器（或者甚至会调用终结器）。
+
+Android不使用finalizer。 在大多数情况下，您可以从具有良好异常处理的终结器中完成所需的操作。 如果你绝对需要它，定义一个close（）方法（或类似的），并准确地记录该方法需要被调用时（见InputStream的例子）。
+在这种情况下，只要不希望溢出日志，就可以打印来自终结器的短日志消息，但不是必需的。
+
+------------------------------------------全路径导入----------------------------------------------------------
+导入类时，建议使用第二种
+import foo.*;
+Potentially reduces the number of import statements.
+import foo.Bar;
+Makes it obvious what classes are actually used and the code is more readable for maintainers.
+
+
+------------------------------------------java Library 规则----------------------------------------------------------
+有使用Android的Java库和工具的约定。 在某些情况下，约定以重要的方式发生了变化，较旧的代码可能使用已弃用的模式或库。
+当使用这样的代码，可以继续现有的风格。 但是，在创建新组件时，不要使用不推荐使用的库。
+
+------------------------------------------java 风格 规则----------------------------------------------------------
+http://www.oracle.com/technetwork/java/javase/documentation/index-137868.html
+*使用标准的JavaDoc 注释
+/*
+ * Copyright (C) 2015 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.android.internal.foo;
+
+import android.os.Blah;
+import android.view.Yada;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+/**
+ * Does X and Y and provides an abstraction for Z.
+ */
+
+public class Foo {
+    ...
+}
+
+*方法尽可能小，超过40行，想办法拆解这个方法
+*在类开始的地方或者使用域的方法前面定义域
+*变量的生命周期
+将局部变量的范围保持为最小。 通过这样做，您可以提高代码的可读性和可维护性，并减少出错的可能性。 每个变量都应该在包含变量所有使用的最内层块中声明。
+异常是try-catch语句。 如果变量使用抛出异常的方法的返回值初始化，则必须在try块中初始化。
+如果值必须在try块之外使用，那么它必须在try块之前声明，在那里它还不能被明智地初始化：
+// Instantiate class cl, which represents some sort of Set
+Set s = null;
+try {
+    s = (Set) cl.newInstance();
+} catch(IllegalAccessException e) {
+    throw new IllegalArgumentException(cl + " not accessible");
+} catch(InstantiationException e) {
+    throw new IllegalArgumentException(cl + " not instantiable");
+}
+
+// Exercise the set
+s.addAll(Arrays.asList(args));
+然而，即使这种情况也可以通过在一个方法中封装try-catch块来避免：
+Set createSet(Class cl) {
+    // Instantiate class cl, which represents some sort of Set
+    try {
+        return (Set) cl.newInstance();
+    } catch(IllegalAccessException e) {
+        throw new IllegalArgumentException(cl + " not accessible");
+    } catch(InstantiationException e) {
+        throw new IllegalArgumentException(cl + " not instantiable");
+    }
+}
+...
+// Exercise the set
+Set s = createSet(cl);
+s.addAll(Arrays.asList(args));
+循环变量应该在for语句本身中声明，除非有强制的理由不这样做：
+for (int i = 0; i < n; i++) {
+    doSomething(i);
+}
+and
+
+for (Iterator i = c.iterator(); i.hasNext(); ) {
+    doSomethingElse(i.next());
+}
+
+*保持导入类的顺序如下：
+Android imports：SDK api
+Imports from third parties (com, junit, net, org)：第三方api
+java and javax:JDK api
+*使用空格
+google项目使用4个空格不适用tab
+使用8个空格表示一条语句的换行
+correct:
+
+Instrument i =
+        someLongExpression(that, wouldNotFit, on, one, line);
+and this is not correct:
+
+Instrument i =
+    someLongExpression(that, wouldNotFit, on, one, line);
+    
+* 遵循字段命名约定  
+非公共，非静态字段名以m开头。
+静态字段名称以s开头。
+其他字段以小写字母开头。
+公共静态最终字段（常量）为ALL_CAPS_WITH_UNDERSCORES。
+public class MyClass {
+    public static final int SOME_CONSTANT = 42;
+    public int publicField;
+    private static MyClass sSingleton;
+    int mPackagePrivate;
+    private int mPrivate;
+    protected int mProtected;
+}
+*使用标准括号样式
+class MyClass {
+    int func() {
+        if (something) {
+            // ...
+        } else if (somethingElse) {
+            // ...
+        } else {
+            // ...
+        }
+    }
+}
+
+可行:
+
+if (condition) {
+    body();
+}
+可行:
+
+if (condition) body();
+but this is not acceptable:
+
+if (condition)
+    body();  // 差评
+ *限制每一行的长度
+  每行最多一百个字母
+  
+  *注释应该在同一语言元素的其他修饰符之前。简单标记注释（例如@ Override）可以与语言元素列在同一行。如果有多个注释或参数化注释，它们应按字母顺序逐行列出。
+
+Java中的三个预定义注释的Android标准实践是：
+
+@Deprecated：每当不鼓励使用注释元素时，必须使用@Deprecated注释。如果使用@Deprecated注释，则还必须具有@deprecated Javadoc标记，并且应该命名替代实现。此外，请记住，@Deprecated方法仍然应该工作。如果您看到旧代码带有@deprecated Javadoc标记，请添加@Deprecated注释。
+@覆盖：每当方法从超类覆盖声明或实现时，必须使用@Override注释。例如，如果使用@inheritdocs Javadoc标记，并从类（而不是接口）派生，则还必须注释该方法@覆盖父类的方法。
+@SuppressWarnings：@SuppressWarnings注释只应在不可能消除警告的情况下使用。如果警告通过此“不可能消除”测试，则必须使用@SuppressWarnings注释，以确保所有警告都反映代码中的实际问题。
+当需要@SuppressWarnings注释时，必须以TODO注释作为前缀，解释“不可能消除”条件。这通常会识别具有尴尬界面的违规类。例如：
+// TODO：第三方类com.third.useful.Utility.rotate（）需要泛型
+@SuppressWarnings（“generic-cast”）
+List <String> blix = Utility.rotate（blax）;
+当需要@SuppressWarnings注释时，应重构代码以隔离应用注释的软件元素。
+
+*将首字母缩略词作为词
+
+    Good	        Bad
+XmlHttpRequest	XMLHTTPRequest
+getCustomerId	getCustomerID
+class Html	    class HTML
+String url	    String URL
+long id	        long ID
+
+*使用TODO注释如果您的TODO的形式是“在未来的日期做某事”，
+请确保您包括一个非常具体的日期（“修复在2005年11月”）或一个非常具体的事件（“删除此代码之后所有生产混音师理解协议V7 。“）。
+
+*正确使用log
+虽然记录是必要的，但它对性能具有显着的负面影响，并且如果不保持合理的简短，则快速失去其有用性。 日志记录工具提供五个不同级别的日志记录：
+error:当发生致命事件时使用，即某些会有用户可见的后果，并且如果没有显式删除某些数据，卸载应用程序，
+擦除数据分区或重新刷新整个设备（或更糟），将无法恢复。 此级别始终记录。
+在ERROR级别上证明某些日志记录的问题通常是被报告给统计信息收集服务器的好候选。
+
+warnning:在发生严重和意外事件时使用，即某些会有用户可见的后果，但可能通过执行一些明确的操作来恢复，
+而不会丢失数据，从等待或重新启动应用程序到重新下载新版本 应用程序或重新启动设备。
+此级别始终记录。 在WARNING级别进行某些日志记录的问题也可能被考虑用于向统计信息收集服务器报告。
+Infomation:使用注意到，大多数人发生了有趣的事情，即当检测到可能具有广泛影响的情况时，虽然不一定是错误。
+这样的条件只能由合理地认为它是该域中最具权威性的模块记录（以避免非授权组件的重复日志记录）。 此级别始终记录。
+debug:用于进一步记录设备上可能与调查和调试意外行为相关的内容。 你应该只记录需要什么来收集有关你的组件发生什么的足够的信息。 
+如果您的调试日志主导日志，那么您可能应该使用详细日志记录。
+此级别将被记录，即使在发布版本上，并且需要被包含在if（LOCAL_LOG）或if（LOCAL_LOGD）块中，其中LOCAL_LOG [D]在类或子组件中定义，以便可能存在可能性 禁用所有这样的日志记录。 因此，在if（LOCAL_LOG）块中必须没有活动逻辑。 所有用于日志的字符串构建也需要放在if（LOCAL_LOG）块中。 如果要使字符串构建在if（LOCAL_LOG）块之外发生，则不应将日志调用重新映射到方法调用中。
+有一些代码仍然说if（localLOGV）。 这也被认为是可接受的，虽然名称是非标准的。
+verbose:用于一切。 此级别将仅在调试版本中记录，并应由if（LOCAL_LOGV）块（或等效的）包围，因此可以默认编译出来。 
+任何字符串构建都将从发布版本中删除，并且需要显示在if（LOCAL_LOGV）块中。
+注意：
+1、在给定的模块中，除了在VERBOSE级别，错误只应该报告一次，如果可能的话。
+在模块内的单个函数调用链中，只有最内层函数应该返回错误，并且同一模块中的调用者应该只添加一些日志，如果这显着帮助隔离问题。
+2.在一个模块链中，除了VERBOSE级别以外，当低级模块检测到来自高级模块的无效数据时，低级模块只应将此情况记录到DEBUG日志中，并且仅当日志记录提供 对呼叫者不可用的信息。 具体来说，不需要记录抛出异常的情况（异常应包含所有相关信息），或者记录的唯一信息包含在错误代码中。 这在框架和应用程序之间的交互中尤其重要，由框架正确处理的第三方应用程序引起的条件不应该触发高于DEBUG级别的日志记录。 
+应该在INFORMATIVE级别或更高级别触发日志记录的唯一情况是模块或应用程序在其自身级别或来自较低级别时检测到错误。
+3.当通常证明某些日志记录可能发生多次的条件可能是一个好主意，实施一些速率限制机制以防止日志与相同（或非常相似）信息的许多重复副本的溢出。
+4.网络连接的损失被认为是常见的，完全预期的，不应该被无偿地记录。 
+在应用程序中发生后果的网络连接丢失应在DEBUG或VERBOSE级别记录（取决于后果是否足够严重，并且意外足以登录到发布版本中）。
+5.在可由第三方应用程序访问或代表第三方应用程序访问的文件系统上具有完整的文件系统不应该记录在高于INFORMATIVE的级别。
+6.来自任何不受信任的源（包括共享存储上的任何文件或来自任何网络连接的数据）的无效数据被认为是预期的，并且当检测到无效时，不应该在高于DEBUG的级别触发任何日志记录 日志记录应尽可能有限）。
+7.请记住，当在字符串上使用+运算符时，会隐式创建一个带有默认缓冲区大小（16个字符）和其他临时String对象的StringBuilder，即显式创建StringBuilders不比依赖于默认的'+ '操作符（事实上可以更高效）。
+请记住，调用Log.v（）的代码在发布版本上编译和执行，包括构建字符串，即使日志没有被读取。
+8.任何意图被其他人读取并且在发布版本中可用的日志记录应该是简洁的，而不是含糊的，并且应该是可理解的。这包括所有登录到DEBUG级别。
+如果可能，记录应该保持在一行，如果有意义。线长度最多可达80或100个字符是完全可以接受的，如果可能，应避免长度大于约130或160个字符（包括标签的长度）。
+9.不应使用高于VERBOSE的级别记录报告成功的日志。
+10.用于诊断难以重现的问题的临时日志应该保存在DEBUG或VERBOSE级别，并且应该包含在允许在编译时完全禁用它的块。
+11.小心日志中的安全漏洞。应避免私人信息。
+必须避免有关受保护内容的信息。这在编写框架代码时尤其重要，因为事先不容易知道什么是和不是私人信息或受保护的内容。
+12.决不应使用System.out.println（）（或本地代码的printf（））。 
+System.out和System.err被重定向到/ dev / null，所以你的打印语句将没有可见的效果。然而，对于这些调用发生的所有字符串构建仍然被执行。
+13.记录的黄金规则是，您的日志可能不会不必要地将其他日志推出缓冲区，就像其他人可能不会推出您的日志。
+
+*始终如一
+我们分开的想法：一致。 如果您正在编辑代码，请花几分钟时间查看周围的代码并确定其样式。 如果该代码使用if子句周围的空格，你也应该。 如果代码注释在他们周围有一些星星框，那么你的评论也有一些星星。
+
+有风格指导的要点是有一个通用的编码词汇，所以人们可以专注于你在说什么，而不是你如何说。
+我们在这里提出全球风格规则，所以人们知道词汇，但本地风格也很重要。 
+如果你添加到一个文件的代码看起来与现有的代码有很大的不同，当读者阅读它时，它会使读者脱离他们的节奏。 尝试避免这一点。
+_______________________________________________________Javatests Style Rules___________________________________________________________
+testMethod_specificCase1 testMethod_specificCase2
+
+void testIsDistinguishable_protanopia() {
+    ColorMatcher colorMatcher = new ColorMatcher(PROTANOPIA)
+    assertFalse(colorMatcher.isDistinguishable(Color.RED, Color.BLACK))
+    assertTrue(colorMatcher.isDistinguishable(Color.X, Color.Y))
+}
